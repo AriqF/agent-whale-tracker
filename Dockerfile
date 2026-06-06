@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1
+
+FROM node:20-alpine AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+
+FROM base AS deps
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+
+FROM base AS build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json pnpm-lock.yaml tsconfig.json ./
+COPY src ./src
+RUN pnpm run build
+
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY package.json pnpm-lock.yaml ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --prod --frozen-lockfile
+
+COPY --from=build /app/dist ./dist
+
+USER node
+CMD ["node", "dist/bot/index.js"]
