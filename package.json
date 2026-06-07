@@ -1,6 +1,6 @@
 {
-  "name": "agent-whales-track",
-  "version": "0.1.0",
+  "name": "agent-ocean-eyes",
+  "version": "1.0.0",
   "private": true,
   "description": "Telegram bot agent untuk monitor posisi whale di Hyperliquid",
   "packageManager": "pnpm@9.15.9",

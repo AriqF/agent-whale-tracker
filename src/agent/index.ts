@@ -3,17 +3,33 @@ import { parseIntent } from './intentParser';
 import { buildSignalResult } from './signalAnalyzer';
 import { formatSignalReport } from './reportFormatter';
 import { escapeMarkdown } from '../utils/markdown';
-import type { RunAgentOptions } from '../types';
+import type { ParsedIntent, RunAgentOptions } from '../types';
+
+function intentFromOptions(options: RunAgentOptions): ParsedIntent {
+  return {
+    coin: options.coin!.toUpperCase(),
+    cohortFocus: options.cohortFocus ?? 'all',
+    mode: options.mode ?? 'snapshot',
+    positionAge: options.positionAge ?? '24h',
+  };
+}
 
 export async function runWhaleSignalAgent(
   userQuery: string,
   options?: RunAgentOptions
 ): Promise<string> {
   try {
-    const intent = await parseIntent(userQuery);
+    const intent = options?.coin
+      ? intentFromOptions(options)
+      : await parseIntent(userQuery);
 
-    if (options?.cohortFocus) intent.cohortFocus = options.cohortFocus;
-    if (options?.mode) intent.mode = options.mode;
+    if (!options?.coin) {
+      if (options?.cohortFocus) intent.cohortFocus = options.cohortFocus;
+      if (options?.mode) intent.mode = options.mode;
+      if (options?.positionAge) intent.positionAge = options.positionAge;
+    }
+
+    console.log(`[Agent] coin=${intent.coin} mode=${intent.mode} query=${userQuery}`);
 
     if (intent.mode === 'leaderboard') {
       intent.mode = 'snapshot';

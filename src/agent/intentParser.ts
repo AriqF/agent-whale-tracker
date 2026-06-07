@@ -32,6 +32,15 @@ const DEFAULT_INTENT: ParsedIntent = {
 };
 
 export async function parseIntent(userQuery: string): Promise<ParsedIntent> {
+  const structuredCoin = extractCoinFromStructuredQuery(userQuery);
+  if (structuredCoin) {
+    return {
+      ...DEFAULT_INTENT,
+      coin: structuredCoin,
+      mode: /^trend\b/i.test(userQuery.trim()) ? 'trend' : 'snapshot',
+    };
+  }
+
   try {
     const text = await chatCompletion(INTENT_PARSER_SYSTEM, userQuery, 200, true);
     const parsed = JSON.parse(text) as Partial<ParsedIntent>;
@@ -53,4 +62,10 @@ function normalizePositionAge(value: string | undefined): PositionAge {
     return value;
   }
   return '24h';
+}
+
+/** Deterministic coin from "signal ETH" / "trend btc" — avoids LLM defaulting to BTC */
+function extractCoinFromStructuredQuery(query: string): string | null {
+  const match = query.trim().match(/^(?:signal|trend)\s+([A-Za-z0-9_]+)$/i);
+  return match ? match[1].toUpperCase() : null;
 }

@@ -78,6 +78,52 @@ export interface BiasExportResponse {
   data: BiasExportSegment[];
 }
 
+export interface PositionRecord {
+  address: string;
+  size: number;
+  entryPrice: number;
+  side: 'long' | 'short';
+  coin: string;
+  markPrice: number;
+  positionValue: number;
+  liquidationPrice: number;
+  unrealizedPnl: number;
+  openTime: string;
+  closeTime: string | null;
+  profile: { segments: CohortId[] };
+}
+
+export interface PositionsResponse {
+  positions: PositionRecord[];
+  nextCursor?: string;
+}
+
+export interface CohortPositionStats {
+  cohortId: CohortId;
+  cohortName: string;
+  emoji: string;
+  positionCount: number;
+  totalNotional: number;
+  longCount: number;
+  shortCount: number;
+  longNotional: number;
+  shortNotional: number;
+  weightedAvgEntry: number;
+  markPrice: number;
+  avgEntryVsMarkPct: number;
+  pctInProfit: number;
+  pctFresh24h: number;
+  totalUnrealizedPnl: number;
+  topByNotional: PositionRecord[];
+  liqClusterHint: string | null;
+}
+
+export interface PositionsReportResult {
+  coin: string;
+  timestamp: string;
+  cohorts: CohortPositionStats[];
+}
+
 export interface LeaderboardEntry {
   address: string;
   age: string;
@@ -162,6 +208,9 @@ export interface AgentSignalResult {
 }
 
 export interface RunAgentOptions {
+  /** When set (slash commands), skip LLM coin parsing */
+  coin?: string;
   cohortFocus?: ParsedIntent['cohortFocus'];
   mode?: ParsedIntent['mode'];
+  positionAge?: ParsedIntent['positionAge'];
 }

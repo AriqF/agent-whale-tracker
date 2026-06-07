@@ -7,6 +7,8 @@ import type {
   PositionAge,
   PositionMetricSnapshot,
   PositionMetricsResponse,
+  PositionRecord,
+  PositionsResponse,
 } from '../types';
 import {
   logApiCacheHit,
@@ -20,6 +22,11 @@ const SERVICE = 'HyperTracker';
 const BASE_URL = 'https://ht-api.coinmarketman.com';
 
 export const WHALE_COHORT_IDS: CohortId[] = [7, 6, 5, 8, 9];
+
+export const POSITIONS_DEFAULT_COHORT_IDS: CohortId[] = [7, 9];
+export const POSITIONS_LIMIT = 25;
+export const POSITIONS_LOOKBACK_DAYS = 3;
+export const POSITIONS_CACHE_TTL = 600;
 
 export const COHORT_META: Record<
   CohortId,
@@ -66,6 +73,13 @@ function metricsTimeWindow(positionAge: PositionAge): { start: string; end: stri
 
   start.setUTCDate(start.getUTCDate() - lookbackDays[positionAge]);
 
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function positionsTimeWindow(): { start: string; end: string } {
+  const end = new Date();
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - POSITIONS_LOOKBACK_DAYS);
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
@@ -167,6 +181,58 @@ export async function fetchBiasTrendExport(
   });
   setCache(cacheKey, data, 900);
   return data;
+}
+
+export async function fetchCohortPositions(
+  coin: string,
+  segmentId: CohortId,
+  limit = POSITIONS_LIMIT
+): Promise<PositionRecord[]> {
+  const normalized = coin.toUpperCase();
+  const cacheKey = `positions_${normalized}_${segmentId}_open_${limit}_3d`;
+  const cached = getCache<PositionRecord[]>(cacheKey);
+  if (cached) {
+    logApiCacheHit(SERVICE, 'positions', cacheKey);
+    return cached;
+  }
+
+  const { start, end } = positionsTimeWindow();
+  const params = new URLSearchParams({
+    coin: normalized,
+    segmentId: String(segmentId),
+    open: 'true',
+    limit: String(limit),
+    start,
+    end,
+  });
+
+  const url = `${BASE_URL}/api/external/positions?${params}`;
+  const label = `positions coin=${normalized} segment=${segmentId}`;
+
+  const data = await getJson<PositionsResponse>(url, label, { headers: headers() });
+  const positions = data.positions ?? [];
+  setCache(cacheKey, positions, POSITIONS_CACHE_TTL);
+  return positions;
+}
+
+export async function fetchDefaultCohortPositions(
+  coin: string
+): Promise<Map<CohortId, PositionRecord[]>> {
+  const normalized = coin.toUpperCase();
+  console.log(`[${SERVICE}] fetching positions`, {
+    coin: normalized,
+    segments: POSITIONS_DEFAULT_COHORT_IDS,
+    lookbackDays: POSITIONS_LOOKBACK_DAYS,
+  });
+
+  const entries = await Promise.all(
+    POSITIONS_DEFAULT_COHORT_IDS.map(async (id) => {
+      const positions = await fetchCohortPositions(normalized, id);
+      return [id, positions] as const;
+    })
+  );
+
+  return new Map(entries);
 }
 
 // v2: belum dipanggil dari orchestrator
