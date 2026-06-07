@@ -1,8 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { runWhaleSignalAgent } from '../agent';
-import { runPositionsReport } from '../agent/runPositionsReport';
+import { runAgent } from '../agent';
 import { escapeMarkdown } from '../utils/markdown';
-import type { RunAgentOptions } from '../types';
+import type { AgentAction, RunAgentOptions } from '../types';
 
 const ALLOWED_CHAT_IDS = process.env.ALLOWED_CHAT_IDS
   ? process.env.ALLOWED_CHAT_IDS.split(',').map((id) => Number(id.trim())).filter(Boolean)
@@ -11,9 +10,20 @@ const ALLOWED_CHAT_IDS = process.env.ALLOWED_CHAT_IDS
 /** Matches /signal eth, /signal@BotName eth, /positions eth, /position eth */
 const SLASH_COIN_REGEX = /^\/(signal|trend|positions?)(?:@\w+)?(?:\s+([A-Za-z0-9_]+))?$/i;
 
-function parseSlashCoin(text: string): string | undefined {
+function parseSlashCommand(text: string): { coin?: string; action?: AgentAction } {
   const match = text.trim().match(SLASH_COIN_REGEX);
-  return match?.[2]?.toUpperCase();
+  if (!match) return {};
+
+  const cmd = match[1].toLowerCase();
+  const coin = match[2]?.toUpperCase();
+  const action: AgentAction =
+    cmd === 'trend'
+      ? 'signal_trend'
+      : cmd === 'signal'
+        ? 'signal_snapshot'
+        : 'positions';
+
+  return { coin, action };
 }
 
 function isAllowed(chatId: number): boolean {
@@ -28,14 +38,14 @@ async function sendAgentReply(
   options?: RunAgentOptions
 ): Promise<void> {
   bot.sendChatAction(chatId, 'typing');
-  console.log(`QUERY ${chatId}: ${query}`);
+  console.log(`QUERY ${chatId}: ${query}`, options ?? {});
 
-  const loadingMsg = await bot.sendMessage(chatId, '🔍 Mencari para whales\\.\\.\\.', {
+  const loadingMsg = await bot.sendMessage(chatId, '🔍 Menganalisis permintaan\\.\\.\\.', {
     parse_mode: 'MarkdownV2',
   });
 
   try {
-    const result = await runWhaleSignalAgent(query, options);
+    const result = await runAgent(query, options);
     await bot.deleteMessage(chatId, loadingMsg.message_id);
     await bot.sendMessage(chatId, result, {
       parse_mode: 'MarkdownV2',
@@ -43,7 +53,7 @@ async function sendAgentReply(
     });
   } catch (err) {
     console.error('Handler error:', err);
-    await bot.editMessageText('❌ Gagal mengambil data\\. Coba lagi\\.', {
+    await bot.editMessageText('❌ Gagal memproses permintaan\\. Coba lagi\\.', {
       chat_id: chatId,
       message_id: loadingMsg.message_id,
       parse_mode: 'MarkdownV2',
@@ -51,41 +61,23 @@ async function sendAgentReply(
   }
 }
 
-async function sendPositionsReply(bot: TelegramBot, chatId: number, coin: string): Promise<void> {
-  bot.sendChatAction(chatId, 'typing');
-  console.log(`POSITIONS ${chatId}: ${coin}`);
+async function handleSlashCommand(bot: TelegramBot, chatId: number, text: string): Promise<void> {
+  const { coin, action } = parseSlashCommand(text);
+  if (!coin) {
+    await bot.sendMessage(
+      chatId,
+      escapeMarkdown('Sebutkan coin-nya. Contoh: /signal BTC atau /positions ETH'),
+      { parse_mode: 'MarkdownV2' }
+    );
+    return;
+  }
 
-  const loadingMsg = await bot.sendMessage(chatId, '🔍 Mencari posisi whales\\.\\.\\.', {
-    parse_mode: 'MarkdownV2',
+  await sendAgentReply(bot, chatId, text, {
+    coin,
+    action,
+    cohortFocus: 'all',
+    depth: 'full',
   });
-
-  try {
-    const result = await runPositionsReport(coin);
-    await bot.deleteMessage(chatId, loadingMsg.message_id);
-    await bot.sendMessage(chatId, result, {
-      parse_mode: 'MarkdownV2',
-      disable_web_page_preview: true,
-    });
-  } catch (err) {
-    console.error('Positions handler error:', err);
-    await bot.editMessageText('❌ Gagal mengambil data posisi\\. Coba lagi\\.', {
-      chat_id: chatId,
-      message_id: loadingMsg.message_id,
-      parse_mode: 'MarkdownV2',
-    });
-  }
-}
-
-async function sendCoinNotFoundReply(bot: TelegramBot, chatId: number): Promise<void>{
-  bot.sendChatAction(chatId, 'typing');
-  try {
-    await bot.sendMessage(chatId, `Coin cannot be found. Is it correct ticker?`, {
-      parse_mode: 'MarkdownV2',
-      disable_web_page_preview: true,
-    });
-  } catch (err) {
-    console.error('Coin not found handler error:', err);
-  }
 }
 
 export function registerHandlers(bot: TelegramBot): void {
@@ -96,13 +88,15 @@ export function registerHandlers(bot: TelegramBot): void {
       '🐋 *Whale Signal Agent*\n\n' +
         'Monitor posisi whale di Hyperliquid secara real\\-time\\.\n\n' +
         '*Perintah:*\n' +
-        '/signal \\[coin\\] — snapshot posisi whale sekarang\n' +
-        '/positions \\[coin\\] — detail entry, PnL, dan liq cluster\n' +
-        '/trend \\[coin\\] — trend bias 7 hari terakhir\n' +
+        '/signal \\[coin\\] — snapshot bias whale\n' +
+        '/positions \\[coin\\] — detail entry, PnL, liq cluster\n' +
+        '/trend \\[coin\\] — trend bias 7 hari\n' +
         '/top — top trader leaderboard\n' +
         '/help — panduan lengkap\n\n' +
-        'Atau langsung tanya dalam bahasa natural:\n' +
-        '_"Gimana posisi whale BTC sekarang?"_',
+        '*Atau tanya natural:*\n' +
+        '_"Brief position BTC"_ → positions \\(ringkas\\)\n' +
+        '_"Momentum trend ETH gimana?"_ → trend\n' +
+        '_"Overview BTC: bias \\+ entry whale"_ → composite briefing',
       { parse_mode: 'MarkdownV2' }
     );
   });
@@ -112,17 +106,16 @@ export function registerHandlers(bot: TelegramBot): void {
     bot.sendMessage(
       chatId,
       '*Panduan Whale Signal Agent*\n\n' +
-        '*Perintah:*\n' +
-        '• `/signal {coin}` — posisi whale {coin} sekarang\n' +
-        '• `/positions {coin}` — posisi terbuka Leviathan \\+ Smart Money\n' +
-        '• `/signal {coin}` — posisi whale {coin}\n' +
-        '• `/trend {coin}` — trend akumulasi/distribusi\n' +
-        '• `/top` — top trader by all\\-time PnL\n\n' +
-        '*`/positions` vs `/signal`:* positions menampilkan entry price, PnL per wallet, dan liquidation cluster\\. Signal menampilkan bias agregat cohort\\.\n\n' +
-        '*Natural language juga bisa:*\n' +
-        '• _"Smart money lagi long atau short ETH?"_\n' +
-        '• _"Ada divergence di BTC ga?"_\n' +
-        '• _"Whale udah dari harga berapa masuk?"_\n\n' +
+        '*Slash commands:*\n' +
+        '• `/signal {coin}` — bias agregat cohort\n' +
+        '• `/positions {coin}` — entry price, dominasi, top wallet\n' +
+        '• `/trend {coin}` — momentum akumulasi/distribusi\n\n' +
+        '*Natural language \\(agent router\\):*\n' +
+        '• _"Berikan brief position BTC"_ → positions ringkas\n' +
+        '• _"Whale masuk dari harga berapa?"_ → positions\n' +
+        '• _"Gimana posisi whale ETH sekarang?"_ → signal\n' +
+        '• _"Momentum dan arah trend BTC"_ → trend\n' +
+        '• _"Whale accumulate ETH? entry di berapa?"_ → composite briefing\n\n' +
         '⚠️ Bukan financial advice\\. DYOR\\.',
       { parse_mode: 'MarkdownV2' }
     );
@@ -131,47 +124,28 @@ export function registerHandlers(bot: TelegramBot): void {
   bot.onText(/\/signal(?:@\w+)?(?:\s+\S+)?/i, async (msg) => {
     const chatId = msg.chat.id;
     if (!isAllowed(chatId)) return;
-
-    const coin = parseSlashCoin(msg.text ?? '');
-    if (!coin) return await sendCoinNotFoundReply(bot, chatId);
-
-    await sendAgentReply(bot, chatId, `signal ${coin}`, {
-      coin,
-      cohortFocus: 'all',
-      mode: 'snapshot',
-    });
+    await handleSlashCommand(bot, chatId, msg.text ?? '');
   });
 
   bot.onText(/\/trend(?:@\w+)?(?:\s+\S+)?/i, async (msg) => {
     const chatId = msg.chat.id;
     if (!isAllowed(chatId)) return;
-
-    const coin = parseSlashCoin(msg.text ?? '');
-    if (!coin) return await sendCoinNotFoundReply(bot, chatId);
-
-    await sendAgentReply(bot, chatId, `trend ${coin}`, {
-      coin,
-      cohortFocus: 'all',
-      mode: 'trend',
-    });
+    await handleSlashCommand(bot, chatId, msg.text ?? '');
   });
 
   bot.onText(/\/positions?(?:@\w+)?(?:\s+\S+)?/i, async (msg) => {
     const chatId = msg.chat.id;
     if (!isAllowed(chatId)) return;
-
-    const coin = parseSlashCoin(msg.text ?? '');
-    if (!coin) return await sendCoinNotFoundReply(bot, chatId);
-
-    await sendPositionsReply(bot, chatId, coin);
+    await handleSlashCommand(bot, chatId, msg.text ?? '');
   });
 
   bot.onText(/\/top/, async (msg) => {
     const chatId = msg.chat.id;
     if (!isAllowed(chatId)) return;
 
-    bot.sendMessage(chatId, escapeMarkdown('Coming soon 🔜'), {
-      parse_mode: 'MarkdownV2',
+    await sendAgentReply(bot, chatId, 'top trader leaderboard', {
+      coin: 'BTC',
+      action: 'leaderboard',
     });
   });
 

@@ -1,6 +1,8 @@
 import { WHALE_COHORT_IDS } from '../api/hypertracker';
 import { biasEmoji, formatBias, formatUsd } from '../bot/formatter';
-import type { AgentSignalResult, CohortSignal } from '../types';
+import type { AgentDepth, AgentSignalResult, CohortSignal } from '../types';
+
+const BRIEF_COHORT_IDS = [7, 9] as const;
 
 function directionLabel(direction: CohortSignal['direction']): string {
   return direction.replace(/_/g, ' ').toUpperCase();
@@ -193,7 +195,86 @@ function formatConclusionSection(result: AgentSignalResult): string {
   ].join('\n');
 }
 
-export function formatSignalReport(result: AgentSignalResult): string {
+function formatConclusionBrief(result: AgentSignalResult): string {
+  const full = formatConclusionSection(result);
+  const body = full
+    .split('\n')
+    .slice(1)
+    .filter((l) => !l.startsWith('⚠️'))[0];
+  return `KESIMPULAN: ${body ?? 'Data tidak cukup untuk kesimpulan.'}`;
+}
+
+function filterBriefCohorts<T extends { cohortId: number }>(items: T[]): T[] {
+  return items.filter((c) => BRIEF_COHORT_IDS.includes(c.cohortId as 7 | 9));
+}
+
+export function formatSignalBrief(result: AgentSignalResult): string {
+  const keySignals = filterBriefCohorts(result.cohortSignals);
+  const keyTrends = filterBriefCohorts(result.cohortTrends);
+
+  if (result.mode === 'trend') {
+    const trendLines = keyTrends.map((ct) => {
+      const shift = formatBias(ct.trend.biasShift);
+      return `${ct.emoji} ${ct.cohortName}: ${trendDirectionLabel(ct.trend.direction)} | shift ${shift} | bias ${formatBias(ct.latestBias)}`;
+    });
+
+    return [
+      `TREND — ${result.coin} (brief)`,
+      ...trendLines,
+      formatConclusionBrief(result),
+      '⚠️ Bukan financial advice. DYOR.',
+    ].join('\n\n');
+  }
+
+  const cohortLines = keySignals.map(
+    (c) => `${c.emoji} ${c.cohortName}: ${directionLabel(c.direction)} (${formatBias(c.bias)})`
+  );
+
+  const lines = [
+    `SIGNAL — ${result.coin} (brief)`,
+    `Net: ${directionLabel(result.netDirection)} (${formatBias(result.netBias)}) ${biasEmoji(result.netBias)} | Sentimen: ${sentimentLabel(result.overallSentiment)}`,
+    ...cohortLines,
+  ];
+
+  if (result.divergence.detected) {
+    lines.push(`⚡ Divergence: size whale vs smart money berlawanan`);
+  }
+
+  lines.push(formatConclusionBrief(result));
+  lines.push('⚠️ Bukan financial advice. DYOR.');
+
+  return lines.join('\n\n');
+}
+
+/** Exported for composite formatter */
+export function formatKeyCohortSignalLine(c: CohortSignal): string {
+  return `${c.emoji} ${c.cohortName}: ${directionLabel(c.direction)} (${formatBias(c.bias)})`;
+}
+
+export function formatKeyCohortTrendLine(
+  ct: AgentSignalResult['cohortTrends'][number]
+): string {
+  return `${ct.emoji} ${ct.cohortName}: ${trendDirectionLabel(ct.trend.direction)} | shift ${formatBias(ct.trend.biasShift)} | bias ${formatBias(ct.latestBias)}`;
+}
+
+export function getKeyCohortSignals(result: AgentSignalResult): CohortSignal[] {
+  return filterBriefCohorts(result.cohortSignals);
+}
+
+export function getKeyCohortTrends(result: AgentSignalResult): AgentSignalResult['cohortTrends'] {
+  return filterBriefCohorts(result.cohortTrends);
+}
+
+export { directionLabel, sentimentLabel, trendDirectionLabel };
+
+export function formatSignalReport(
+  result: AgentSignalResult,
+  depth: AgentDepth = 'full'
+): string {
+  if (depth === 'brief') {
+    return formatSignalBrief(result);
+  }
+
   if (result.mode === 'trend') {
     return [formatTrendSection(result), formatConclusionSection(result)].join('\n\n');
   }

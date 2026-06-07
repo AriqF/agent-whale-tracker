@@ -112,6 +112,89 @@ function formatConclusion(result: PositionsReportResult): string {
   return lines.join('\n');
 }
 
+function formatSideDominanceBrief(c: CohortPositionStats): string {
+  const { longNotional, shortNotional, totalNotional } = c;
+  if (totalNotional <= 0) return 'tidak ada data';
+
+  const diff = Math.abs(longNotional - shortNotional);
+  const longShare = (longNotional / totalNotional) * 100;
+  const shortShare = (shortNotional / totalNotional) * 100;
+
+  if (diff / totalNotional < 0.05) {
+    return `seimbang (${longShare.toFixed(0)}% long / ${shortShare.toFixed(0)}% short)`;
+  }
+
+  const dominant = longNotional > shortNotional ? 'LONG' : 'SHORT';
+  const dominantShare = Math.max(longShare, shortShare);
+  const weakerShare = Math.min(longShare, shortShare);
+  return `${dominant} dominan selisih ${formatUsd(diff)} (${dominantShare.toFixed(0)}% vs ${weakerShare.toFixed(0)}%)`;
+}
+
+function formatCohortBriefLine(c: CohortPositionStats): string {
+  if (c.positionCount === 0) {
+    return `${c.emoji} ${c.cohortName.toUpperCase()}: tidak ada posisi terbuka`;
+  }
+
+  const pnlSign = c.totalUnrealizedPnl >= 0 ? '+' : '';
+  return [
+    `${c.emoji} ${c.cohortName.toUpperCase()}:`,
+    formatSideDominanceBrief(c),
+    `| avg entry ${formatPrice(c.weightedAvgEntry)} vs mark ${formatPrice(c.markPrice)}`,
+    `| PnL ${pnlSign}${formatUsd(c.totalUnrealizedPnl)}`,
+  ].join(' ');
+}
+
+function formatConclusionBrief(result: PositionsReportResult): string {
+  const withData = result.cohorts.filter((c) => c.positionCount > 0);
+  if (withData.length === 0) {
+    return `KESIMPULAN: Tidak ada posisi terbuka Leviathan/Smart Money untuk ${result.coin}.`;
+  }
+  if (withData.length === 1) {
+    return `KESIMPULAN: Hanya ${withData[0].emoji} ${withData[0].cohortName} punya posisi terbuka.`;
+  }
+
+  const leviathan = withData.find((c) => c.cohortId === 7);
+  const smart = withData.find((c) => c.cohortId === 9);
+  if (!leviathan || !smart) {
+    return `KESIMPULAN: ${withData.map((c) => c.cohortName).join(' vs ')} — lihat detail di atas.`;
+  }
+
+  const leviathanSide =
+    leviathan.longNotional > leviathan.shortNotional ? 'long-heavy' : 'short-heavy';
+  const smartSide =
+    smart.longNotional > smart.shortNotional ? 'long-heavy' : 'short-heavy';
+
+  if (leviathanSide !== smartSide) {
+    return `KESIMPULAN: Leviathan ${leviathanSide}, Smart Money ${smartSide} — conviction berlawanan.`;
+  }
+
+  return `KESIMPULAN: Leviathan dan Smart Money sama-sama ${leviathanSide} | ${Math.round(leviathan.pctInProfit)}% vs ${Math.round(smart.pctInProfit)}% in profit.`;
+}
+
+export function formatPositionsBrief(result: PositionsReportResult): string {
+  const sections = [
+    `POSITIONS — ${result.coin} (brief)`,
+    `🕐 ${formatTimestamp(result.timestamp)}`,
+    ...result.cohorts.map(formatCohortBriefLine),
+    formatConclusionBrief(result),
+    '⚠️ Bukan financial advice. DYOR.',
+  ];
+
+  return sections.join('\n\n');
+}
+
+/** Exported for composite formatter */
+export function formatCohortPositionLine(c: CohortPositionStats): string {
+  return formatCohortBriefLine(c);
+}
+
+export function getDominantSide(c: CohortPositionStats): 'long' | 'short' | 'balanced' {
+  if (c.totalNotional <= 0) return 'balanced';
+  const diff = Math.abs(c.longNotional - c.shortNotional);
+  if (diff / c.totalNotional < 0.05) return 'balanced';
+  return c.longNotional > c.shortNotional ? 'long' : 'short';
+}
+
 export function formatPositionsReport(result: PositionsReportResult): string {
   const sections = [
     `POSITIONS — ${result.coin}`,

@@ -146,6 +146,27 @@ export interface LeaderboardEntry {
 
 // --- Agent Internal Types ---
 
+export type AgentAction =
+  | 'positions'
+  | 'signal_snapshot'
+  | 'signal_trend'
+  | 'composite'
+  | 'leaderboard'
+  | 'clarify';
+
+export type AgentDepth = 'brief' | 'full';
+
+export type CompositeAspect = 'signal' | 'positions' | 'trend';
+
+export interface AgentIntent {
+  coin: string;
+  action: AgentAction;
+  depth: AgentDepth;
+  cohortFocus: 'whale' | 'smart_money' | 'all';
+  positionAge: PositionAge;
+  aspects?: CompositeAspect[];
+}
+
 export interface ParsedIntent {
   coin: string;
   cohortFocus: 'whale' | 'smart_money' | 'all';
@@ -208,9 +229,12 @@ export interface AgentSignalResult {
 }
 
 export interface RunAgentOptions {
-  /** When set (slash commands), skip LLM coin parsing */
+  /** Deterministic override — skips LLM when coin + action are set */
   coin?: string;
+  action?: AgentAction;
+  depth?: AgentDepth;
   cohortFocus?: ParsedIntent['cohortFocus'];
+  /** @deprecated use action: signal_snapshot | signal_trend */
   mode?: ParsedIntent['mode'];
   positionAge?: ParsedIntent['positionAge'];
 }
