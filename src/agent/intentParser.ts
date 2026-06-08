@@ -1,4 +1,4 @@
-import { chatCompletion } from './openai';
+import { chatCompletion } from '../llm/nineRouter';
 import type {
   AgentAction,
   AgentDepth,

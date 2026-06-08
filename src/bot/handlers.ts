@@ -40,7 +40,7 @@ async function sendAgentReply(
   bot.sendChatAction(chatId, 'typing');
   console.log(`QUERY ${chatId}: ${query}`, options ?? {});
 
-  const loadingMsg = await bot.sendMessage(chatId, '🔍 Menganalisis permintaan\\.\\.\\.', {
+  const loadingMsg = await bot.sendMessage(chatId, '👁️ Mengintai pergerakan\\.\\.\\.', {
     parse_mode: 'MarkdownV2',
   });
 

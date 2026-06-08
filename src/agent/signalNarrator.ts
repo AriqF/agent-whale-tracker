@@ -1,4 +1,4 @@
-import { chatCompletion } from './openai';
+import { chatCompletion } from '../llm/nineRouter';
 import type { AgentSignalResult } from '../types';
 
 const NARRATOR_SYSTEM = `You are a sharp, concise crypto trading analyst specializing in whale positioning on Hyperliquid.
