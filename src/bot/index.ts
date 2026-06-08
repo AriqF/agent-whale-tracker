@@ -1,8 +1,6 @@
+import 'dotenv/config';
 import TelegramBot from 'node-telegram-bot-api';
-import * as dotenv from 'dotenv';
 import { registerHandlers } from './handlers';
-
-dotenv.config();
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
