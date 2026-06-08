@@ -20,6 +20,7 @@ RUN pnpm run build
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+ENV PORT=9006
 
 COPY package.json pnpm-lock.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --prod --frozen-lockfile
@@ -27,4 +28,5 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --prod --frozen-l
 COPY --from=build /app/dist ./dist
 
 USER node
+EXPOSE 9006
 CMD ["node", "dist/bot/index.js"]
