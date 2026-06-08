@@ -54,18 +54,48 @@ function formatSideDominance(c: CohortPositionStats): string {
   ].join(' — ');
 }
 
+export function getDominantSide(c: CohortPositionStats): 'long' | 'short' | 'balanced' {
+  if (c.totalNotional <= 0) return 'balanced';
+  const diff = Math.abs(c.longNotional - c.shortNotional);
+  if (diff / c.totalNotional < 0.05) return 'balanced';
+  return c.longNotional > c.shortNotional ? 'long' : 'short';
+}
+
+function getConvictionLabel(c: CohortPositionStats): 'long-heavy' | 'short-heavy' | 'balanced' {
+  const side = getDominantSide(c);
+  if (side === 'long') return 'long-heavy';
+  if (side === 'short') return 'short-heavy';
+  return 'balanced';
+}
+
+function formatEntryComparison(a: CohortPositionStats, b: CohortPositionStats): string {
+  const entryDiff =
+    a.weightedAvgEntry > 0
+      ? ((b.weightedAvgEntry - a.weightedAvgEntry) / a.weightedAvgEntry) * 100
+      : 0;
+  const entryDiffSign = entryDiff >= 0 ? '+' : '';
+  const higher = entryDiff >= 0 ? b : a;
+  const lower = entryDiff >= 0 ? a : b;
+
+  return `${a.emoji} ${a.cohortName} avg entry ${formatPrice(a.weightedAvgEntry)} vs ${b.emoji} ${b.cohortName} ${formatPrice(b.weightedAvgEntry)} — ${higher.cohortName} masuk ${entryDiff >= 0 ? 'lebih tinggi' : 'lebih rendah'} (${entryDiffSign}${Math.abs(entryDiff).toFixed(1)}% vs ${lower.cohortName}).`;
+}
+
 function formatCohortSection(c: CohortPositionStats): string {
   if (c.positionCount === 0) {
     return `${c.emoji} ${c.cohortName.toUpperCase()} (${c.cohortId})\nTidak ada posisi terbuka`;
   }
 
   const pctSign = c.avgEntryVsMarkPct >= 0 ? '+' : '';
-  const dominantSide = c.longCount >= c.shortCount ? 'long' : 'short';
+  const dominantSide = getDominantSide(c);
+  const entryVsMark =
+    dominantSide === 'balanced'
+      ? `Avg entry ${formatPrice(c.weightedAvgEntry)} vs mark ${formatPrice(c.markPrice)} (${pctSign}${c.avgEntryVsMarkPct.toFixed(1)}% vs mark)`
+      : `Avg entry ${formatPrice(c.weightedAvgEntry)} vs mark ${formatPrice(c.markPrice)} (${pctSign}${c.avgEntryVsMarkPct.toFixed(1)}% favorable ${dominantSide})`;
   const lines = [
     `${c.emoji} ${c.cohortName.toUpperCase()} (${c.cohortId})`,
     `${c.positionCount} posisi terbuka | notional ${formatUsd(c.totalNotional)}`,
     formatSideDominance(c),
-    `Avg entry ${formatPrice(c.weightedAvgEntry)} vs mark ${formatPrice(c.markPrice)} (${pctSign}${c.avgEntryVsMarkPct.toFixed(1)}% favorable ${dominantSide})`,
+    entryVsMark,
     `Profit: ${Math.round(c.pctInProfit)}% posisi | Fresh <24h: ${Math.round(c.pctFresh24h)}%`,
     `PnL unrealized: ${c.totalUnrealizedPnl >= 0 ? '+' : ''}${formatUsd(c.totalUnrealizedPnl)}`,
   ];
@@ -82,35 +112,64 @@ function formatCohortSection(c: CohortPositionStats): string {
   return lines.join('\n');
 }
 
+function isOpposingConviction(
+  a: 'long-heavy' | 'short-heavy' | 'balanced',
+  b: 'long-heavy' | 'short-heavy' | 'balanced'
+): boolean {
+  return (
+    (a === 'long-heavy' && b === 'short-heavy') ||
+    (a === 'short-heavy' && b === 'long-heavy')
+  );
+}
+
+function formatCohortConvictionSummary(a: CohortPositionStats, b: CohortPositionStats): string {
+  const aLabel = getConvictionLabel(a);
+  const bLabel = getConvictionLabel(b);
+
+  if (isOpposingConviction(aLabel, bLabel)) {
+    return `${a.emoji} ${a.cohortName} ${aLabel} (avg entry ${formatPrice(a.weightedAvgEntry)}) vs ${b.emoji} ${b.cohortName} ${bLabel} (avg entry ${formatPrice(b.weightedAvgEntry)}) — conviction berlawanan, entry tidak comparable antar cohort.`;
+  }
+
+  if (aLabel === 'balanced' || bLabel === 'balanced') {
+    return `${a.emoji} ${a.cohortName} ${aLabel} vs ${b.emoji} ${b.cohortName} ${bLabel} — dominasi berbeda, entry tidak dibandingkan langsung.`;
+  }
+
+  return formatEntryComparison(a, b);
+}
+
 function formatConclusion(result: PositionsReportResult): string {
   const withData = result.cohorts.filter((c) => c.positionCount > 0);
+  const footer = '⚠️ Bukan financial advice. DYOR.';
+
   if (withData.length < 2) {
     return [
       'KESIMPULAN',
       withData.length === 0
         ? `Tidak ada posisi terbuka Leviathan/Smart Money untuk ${result.coin}.`
         : `Hanya ${withData[0].emoji} ${withData[0].cohortName} punya posisi terbuka.`,
-      '⚠️ Bukan financial advice. DYOR.',
+      footer,
+    ].join('\n');
+  }
+
+  const leviathan = withData.find((c) => c.cohortId === 7);
+  const smart = withData.find((c) => c.cohortId === 9);
+
+  if (leviathan && smart) {
+    return [
+      'KESIMPULAN',
+      formatCohortConvictionSummary(leviathan, smart),
+      `${Math.round(leviathan.pctInProfit)}% Leviathan in profit vs ${Math.round(smart.pctInProfit)}% Smart Money.`,
+      footer,
     ].join('\n');
   }
 
   const [a, b] = withData;
-  const entryDiff =
-    a.weightedAvgEntry > 0
-      ? ((b.weightedAvgEntry - a.weightedAvgEntry) / a.weightedAvgEntry) * 100
-      : 0;
-  const entryDiffSign = entryDiff >= 0 ? '+' : '';
-  const higher = entryDiff >= 0 ? b : a;
-  const lower = entryDiff >= 0 ? a : b;
-
-  const lines = [
+  return [
     'KESIMPULAN',
-    `${a.emoji} ${a.cohortName} avg entry ${formatPrice(a.weightedAvgEntry)} vs ${b.emoji} ${b.cohortName} ${formatPrice(b.weightedAvgEntry)} — ${higher.cohortName} masuk ${entryDiff >= 0 ? 'lebih tinggi' : 'lebih rendah'} (${entryDiffSign}${Math.abs(entryDiff).toFixed(1)}% vs ${lower.cohortName}).`,
+    formatCohortConvictionSummary(a, b),
     `${Math.round(a.pctInProfit)}% ${a.cohortName} in profit vs ${Math.round(b.pctInProfit)}% ${b.cohortName}.`,
-    '⚠️ Bukan financial advice. DYOR.',
-  ];
-
-  return lines.join('\n');
+    footer,
+  ].join('\n');
 }
 
 function formatSideDominanceBrief(c: CohortPositionStats): string {
@@ -160,13 +219,15 @@ function formatConclusionBrief(result: PositionsReportResult): string {
     return `KESIMPULAN: ${withData.map((c) => c.cohortName).join(' vs ')} — lihat detail di atas.`;
   }
 
-  const leviathanSide =
-    leviathan.longNotional > leviathan.shortNotional ? 'long-heavy' : 'short-heavy';
-  const smartSide =
-    smart.longNotional > smart.shortNotional ? 'long-heavy' : 'short-heavy';
+  const leviathanSide = getConvictionLabel(leviathan);
+  const smartSide = getConvictionLabel(smart);
 
-  if (leviathanSide !== smartSide) {
+  if (isOpposingConviction(leviathanSide, smartSide)) {
     return `KESIMPULAN: Leviathan ${leviathanSide}, Smart Money ${smartSide} — conviction berlawanan.`;
+  }
+
+  if (leviathanSide === 'balanced' || smartSide === 'balanced') {
+    return `KESIMPULAN: Leviathan ${leviathanSide}, Smart Money ${smartSide} — dominasi berbeda.`;
   }
 
   return `KESIMPULAN: Leviathan dan Smart Money sama-sama ${leviathanSide} | ${Math.round(leviathan.pctInProfit)}% vs ${Math.round(smart.pctInProfit)}% in profit.`;
@@ -187,13 +248,6 @@ export function formatPositionsBrief(result: PositionsReportResult): string {
 /** Exported for composite formatter */
 export function formatCohortPositionLine(c: CohortPositionStats): string {
   return formatCohortBriefLine(c);
-}
-
-export function getDominantSide(c: CohortPositionStats): 'long' | 'short' | 'balanced' {
-  if (c.totalNotional <= 0) return 'balanced';
-  const diff = Math.abs(c.longNotional - c.shortNotional);
-  if (diff / c.totalNotional < 0.05) return 'balanced';
-  return c.longNotional > c.shortNotional ? 'long' : 'short';
 }
 
 export function formatPositionsReport(result: PositionsReportResult): string {
