@@ -1,4 +1,5 @@
 import { formatUsd } from '../bot/formatter';
+import { inlineCode } from '../utils/markdown';
 import type { CohortPositionStats, PositionRecord, PositionsReportResult } from '../types';
 
 function formatPrice(price: number): string {
@@ -17,7 +18,7 @@ function formatTimestamp(iso: string): string {
 function formatTopPosition(index: number, p: PositionRecord): string {
   const pnlSign = p.unrealizedPnl >= 0 ? '+' : '';
   return [
-    `  ${index}. ${p.address}`,
+    `${index}. ${inlineCode(p.address)}`,
     `     ${p.side.toUpperCase()} ${formatUsd(p.positionValue)} | entry ${formatPrice(p.entryPrice)} | PnL ${pnlSign}${formatUsd(p.unrealizedPnl)}`,
   ].join('\n');
 }

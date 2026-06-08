@@ -1,7 +1,7 @@
 import { fetchDefaultCohortPositions } from '../api/hypertracker';
 import { aggregateCohortPositions } from '../positions/positionAggregator';
 import { formatPositionsReport, formatPositionsBrief } from '../positions/positionFormatter';
-import { escapeMarkdown } from '../utils/markdown';
+import { escapeMarkdownPreserveCode } from '../utils/markdown';
 
 export async function runPositionsReport(
   coin: string,
@@ -18,10 +18,10 @@ export async function runPositionsReport(
         ? formatPositionsBrief(result)
         : formatPositionsReport(result);
 
-    return escapeMarkdown(report);
+    return escapeMarkdownPreserveCode(report);
   } catch (err) {
     console.error('Positions report error:', err);
-    return escapeMarkdown(
+    return escapeMarkdownPreserveCode(
       'Gagal mengambil data posisi dari HyperTracker. Cek API key dan koneksi.'
     );
   }
