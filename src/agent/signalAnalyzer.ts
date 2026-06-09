@@ -114,6 +114,7 @@ export function buildSignalResult(
   const result: AgentSignalResult = {
     coin: intent.coin,
     timestamp: new Date().toISOString(),
+    positionAge: intent.positionAge,
     mode: effectiveMode === 'trend' ? 'trend' : 'snapshot',
     cohortSignals,
     cohortTrends,

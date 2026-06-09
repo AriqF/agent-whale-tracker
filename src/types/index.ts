@@ -216,6 +216,7 @@ export interface TrendSignal {
 export interface AgentSignalResult {
   coin: string;
   timestamp: string;
+  positionAge: PositionAge;
   mode: 'snapshot' | 'trend';
   cohortSignals: CohortSignal[];
   cohortTrends: CohortTrendSummary[];
@@ -237,4 +238,38 @@ export interface RunAgentOptions {
   /** @deprecated use action: signal_snapshot | signal_trend */
   mode?: ParsedIntent['mode'];
   positionAge?: ParsedIntent['positionAge'];
+  chatId?: number;
+}
+
+export interface ChatContext {
+  lastCoin: string;
+  lastAction: AgentAction;
+  lastDepth: AgentDepth;
+  lastPositionAge: PositionAge;
+  updatedAt: string;
+}
+
+export type ConvictionLabel = 'long-heavy' | 'short-heavy' | 'balanced';
+
+export interface MonitorFingerprint {
+  coin: string;
+  netBias: number;
+  leviathanBias: number;
+  smartMoneyBias: number;
+  whaleTrendDirection: TrendSignal['direction'];
+  overallSentiment: AgentSignalResult['overallSentiment'];
+  divergenceDetected: boolean;
+  leviathanConviction: ConvictionLabel;
+  smartMoneyConviction: ConvictionLabel;
+  capturedAt: string;
+}
+
+export interface MonitorAlertEvent {
+  kind:
+    | 'bias_shift'
+    | 'trend_change'
+    | 'sentiment_flip'
+    | 'divergence_new'
+    | 'conviction_divergence';
+  message: string;
 }

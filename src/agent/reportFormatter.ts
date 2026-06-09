@@ -1,5 +1,6 @@
 import { WHALE_COHORT_IDS } from '../api/hypertracker';
 import { biasEmoji, formatBias, formatUsd } from '../bot/formatter';
+import { positionAgeLabel } from './positionAge';
 import type { AgentDepth, AgentSignalResult, CohortSignal } from '../types';
 
 const BRIEF_COHORT_IDS = [7, 9] as const;
@@ -51,11 +52,11 @@ function formatPositioningSection(result: AgentSignalResult): string {
       `  ${c.tradersInPosition} posisi | ${formatPnlLine(c)}${staleTag}`,
     ].join('\n');
   });
-  return `POSITIONING — ${result.coin}\n${lines.join('\n')}`;
+  return `POSITIONING — ${result.coin} (${positionAgeLabel(result.positionAge)})\n${lines.join('\n')}`;
 }
 
 function formatSignalSection(result: AgentSignalResult): string {
-  const lines: string[] = ['SIGNAL'];
+  const lines: string[] = [`SIGNAL (${positionAgeLabel(result.positionAge)})`];
 
   lines.push(
     `Sentimen net: ${directionLabel(result.netDirection)} (${formatBias(result.netBias)}) ${biasEmoji(result.netBias)}`
@@ -129,7 +130,9 @@ function formatIntraSizeDivergence(sizeWhales: CohortSignal[]): string | null {
 }
 
 function formatTrendSection(result: AgentSignalResult): string {
-  const lines: string[] = [`TREND — 7 hari (${result.coin})`];
+  const lines: string[] = [
+    `TREND — ${positionAgeLabel(result.positionAge)} (${result.coin})`,
+  ];
 
   const ordered = WHALE_COHORT_IDS.map((id) =>
     result.cohortTrends.find((t) => t.cohortId === id)
@@ -219,7 +222,7 @@ export function formatSignalBrief(result: AgentSignalResult): string {
     });
 
     return [
-      `TREND — ${result.coin} (brief)`,
+      `TREND — ${result.coin} (${positionAgeLabel(result.positionAge)}, brief)`,
       ...trendLines,
       formatConclusionBrief(result),
       '⚠️ Bukan financial advice. DYOR.',
@@ -231,7 +234,7 @@ export function formatSignalBrief(result: AgentSignalResult): string {
   );
 
   const lines = [
-    `SIGNAL — ${result.coin} (brief)`,
+    `SIGNAL — ${result.coin} (${positionAgeLabel(result.positionAge)}, brief)`,
     `Net: ${directionLabel(result.netDirection)} (${formatBias(result.netBias)}) ${biasEmoji(result.netBias)} | Sentimen: ${sentimentLabel(result.overallSentiment)}`,
     ...cohortLines,
   ];

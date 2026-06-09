@@ -5,12 +5,14 @@ Telegram bot untuk memantau posisi whale di **Hyperliquid** via [HyperTracker](h
 ## Fitur
 
 - **Signal snapshot** — bias agregat whale & smart money per cohort
-- **Trend** — momentum akumulasi / distribusi (7 hari)
+- **Trend** — momentum akumulasi / distribusi dengan timeframe configurable (24h / 7d / 30d)
 - **Positions** — entry price, dominasi LONG/SHORT, top wallet, PnL, liq cluster
 - **Composite briefing** — gabungan signal + positions + trend dalam satu ringkasan
 - **Natural language routing** — LLM hanya untuk intent parsing (1 call per pesan NL)
 - **Slash commands** — deterministik, tanpa LLM
 - **Format brief & full** — ringkas atau lengkap sesuai intent
+- **Chat context (Redis)** — ingat coin/action terakhir per chat; follow-up seperti _"trend"_ tanpa ulang coin
+- **BTC pulse monitor** — alert proaktif ke whitelisted users saat ada perubahan signifikan (interval 4 jam)
 
 ## Tech stack
 
@@ -20,6 +22,7 @@ Telegram bot untuk memantau posisi whale di **Hyperliquid** via [HyperTracker](h
 | Bot | `node-telegram-bot-api` (polling) |
 | Data | HyperTracker REST API |
 | LLM | 9router (OpenAI-compatible) — intent routing only |
+| Memory | Redis (chat context + monitor state) — optional, graceful degrade |
 | Package manager | pnpm |
 
 ## Quick start
@@ -31,6 +34,7 @@ Telegram bot untuk memantau posisi whale di **Hyperliquid** via [HyperTracker](h
 - Telegram Bot Token ([@BotFather](https://t.me/BotFather))
 - HyperTracker API key
 - 9router base URL + API key
+- Redis (opsional, untuk chat context & monitor state)
 
 ### Install & jalankan
 
@@ -57,6 +61,14 @@ Copy dari [`.env.example`](.env.example):
 | `9ROUTER_API_KEY` | Ya | API key 9router |
 | `LLM_MODEL` | Ya | Model ID, mis. `gpt-4o-mini` |
 | `ALLOWED_CHAT_IDS` | Tidak | Chat ID Telegram (comma-separated). Kosong = terbuka untuk semua |
+| `WHITELIST_DEV_CONTACT` | Tidak | Kontak developer di pesan deny whitelist |
+| `REDIS_URL` | Tidak | Redis URL, mis. `redis://localhost:6379`. Kosong = stateless |
+| `CHAT_CONTEXT_TTL_HOURS` | Tidak | TTL context per chat (default `72`) |
+| `MONITOR_ENABLED` | Tidak | `true` untuk aktifkan BTC pulse monitor |
+| `MONITOR_COIN` | Tidak | Coin yang dimonitor (default `BTC`) |
+| `MONITOR_INTERVAL_HOURS` | Tidak | Interval tick monitor (default `4`) |
+| `MONITOR_BIAS_SHIFT_THRESHOLD` | Tidak | Min perubahan bias untuk alert (default `0.3`) |
+| `MONITOR_STARTUP_DELAY_MS` | Tidak | Delay tick pertama setelah startup (default `300000`) |
 
 > Env var `9ROUTER_*` diawali angka — valid di file `.env` (dotenv), tapi tidak bisa di-`export` langsung di bash.
 
@@ -68,12 +80,16 @@ Copy dari [`.env.example`](.env.example):
 |---------|-----------|
 | `/start` | Intro & contoh penggunaan |
 | `/help` | Panduan lengkap |
-| `/signal {coin}` | Snapshot bias whale |
-| `/positions {coin}` | Detail posisi & entry |
-| `/trend {coin}` | Trend bias 7 hari |
+| `/signal {coin} [timeframe]` | Snapshot bias whale (default `24h`) |
+| `/positions {coin} [timeframe]` | Detail posisi & entry |
+| `/trend {coin} [timeframe]` | Trend bias whale |
 | `/top` | Leaderboard (coming soon) |
 
-Contoh: `/signal BTC`, `/positions ETH`, `/trend SOL`
+**Timeframe:** `24h`, `7d`, `30d`, atau alias `intraday` / `scalping` / `swing`. Default `24h` jika tidak disebut.
+
+Contoh: `/signal BTC`, `/trend PENGU 7d`, `/positions ETH intraday`, `/trend SOL swing`
+
+> Granularitas minimum HyperTracker: **24 jam** — bukan candle menit/jam. Positions detail tetap lookback API 3 hari; timeframe mempengaruhi signal/trend metrics.
 
 ### Natural language
 
@@ -82,7 +98,9 @@ Bot merutekan intent via LLM, lalu fetch data & format report:
 - _"Gimana posisi whale ETH sekarang?"_ → signal
 - _"Brief position BTC"_ → positions (ringkas)
 - _"Momentum trend BTC gimana?"_ → trend
+- _"Trend PENGU untuk scalping"_ → trend 24 jam
 - _"Overview BTC: bias + entry whale"_ → composite briefing
+- _"/positions PENGU 7d"_ lalu _"trend juga"_ → trend PENGU 7 hari (context dari Redis)
 
 ## Arsitektur
 
@@ -91,6 +109,8 @@ User (Telegram)
     │
     ▼
 handlers.ts ──► runAgent()
+                    │
+                    ├─ loadChatContext (Redis) ──► intentParser + heuristic follow-up
                     │
                     ├─ slash command → intent deterministik (tanpa LLM)
                     │
@@ -105,6 +125,11 @@ handlers.ts ──► runAgent()
                                         │
                                         ▼
                               Formatter deterministik → MarkdownV2
+                                        │
+                                        ▼
+                              saveChatContext (Redis)
+
+scheduler.ts ──► runPulse (BTC monitor) ──► ALLOWED_CHAT_IDS only
 ```
 
 **Tier 0 design:** isi laporan 100% template/code — LLM tidak menulis narasi report.
@@ -113,8 +138,9 @@ handlers.ts ──► runAgent()
 
 ```
 src/
-├── bot/           # Telegram handlers & entry point
-├── agent/         # Router, intent parser, report runners & formatters
+├── bot/           # Telegram handlers, access control & entry point
+├── agent/         # Router, intent parser, report runners, monitor & scheduler
+├── redis/         # Redis client + generic JSON KV
 ├── api/           # HyperTracker client
 ├── llm/           # LLM providers (nineRouter, types)
 ├── positions/     # Position aggregation & formatting
@@ -148,7 +174,7 @@ Panduan deploy ke VM tanpa Docker (nvm + PM2 + GitHub Actions):
 
 → [`notes/deployment-setup.md`](notes/deployment-setup.md)
 
-**Penting:** hanya **satu instance** bot per `TELEGRAM_BOT_TOKEN`. Jangan jalankan dev lokal dan production VM bersamaan.
+**Penting:** hanya **satu instance** bot per `TELEGRAM_BOT_TOKEN`. Jangan jalankan dev lokal dan production VM bersamaan. Monitor scheduler + polling harus share satu process.
 
 ## Docker (opsional)
 
@@ -167,6 +193,8 @@ docker run -d --restart unless-stopped --env-file .env.prod agent-ocean-eyes
 | `9ROUTER_API_KEY is not set` | Isi env di `.env` |
 | Intent salah / selalu clarify | Cek koneksi 9router; slash command bypass LLM |
 | `409 Conflict` dari Telegram | Dua process polling token yang sama — stop salah satunya |
+| Redis unavailable | Bot tetap jalan stateless; log `[Redis] unavailable` |
+| Monitor tidak kirim alert | Tick pertama hanya baseline; set `MONITOR_ENABLED=true` + `ALLOWED_CHAT_IDS` |
 
 ## Disclaimer
 

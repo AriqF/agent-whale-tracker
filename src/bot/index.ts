@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import TelegramBot from 'node-telegram-bot-api';
+import { startMonitorScheduler } from '../agent/scheduler';
+import { pingRedis } from '../redis/client';
 import { registerHandlers } from './handlers';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -10,5 +12,10 @@ if (!token) {
 const bot = new TelegramBot(token, { polling: true });
 
 registerHandlers(bot);
+startMonitorScheduler(bot);
+
+pingRedis().then((ok) => {
+  console.log(ok ? '[Redis] ping ok' : '[Redis] unavailable — stateless mode');
+});
 
 console.log('🐋 Whale Signal Bot is running...');

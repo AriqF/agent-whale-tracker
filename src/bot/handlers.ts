@@ -1,37 +1,12 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { runAgent } from '../agent';
+import { parseSlashCommandArgs } from '../agent/intentParser';
+import { isChatAllowed } from './access';
 import { escapeMarkdown, inlineCode } from '../utils/markdown';
-import type { AgentAction, RunAgentOptions } from '../types';
-
-/** Matches /signal eth, /signal@BotName eth, /positions eth, /position eth */
-const SLASH_COIN_REGEX = /^\/(signal|trend|positions?)(?:@\w+)?(?:\s+([A-Za-z0-9_]+))?$/i;
-
-function getAllowedChatIds(): number[] {
-  const raw = process.env.ALLOWED_CHAT_IDS?.trim();
-  if (!raw) return [];
-  return raw.split(',').map((id) => Number(id.trim())).filter(Boolean);
-}
-
-function parseSlashCommand(text: string): { coin?: string; action?: AgentAction } {
-  const match = text.trim().match(SLASH_COIN_REGEX);
-  if (!match) return {};
-
-  const cmd = match[1].toLowerCase();
-  const coin = match[2]?.toUpperCase();
-  const action: AgentAction =
-    cmd === 'trend'
-      ? 'signal_trend'
-      : cmd === 'signal'
-        ? 'signal_snapshot'
-        : 'positions';
-
-  return { coin, action };
-}
+import type { RunAgentOptions } from '../types';
 
 function isAllowed(chatId: number): boolean {
-  const allowed = getAllowedChatIds();
-  if (allowed.length === 0) return true;
-  return allowed.includes(chatId);
+  return isChatAllowed(chatId);
 }
 
 function buildWhitelistDenyMessage(chatId: number): string {
@@ -64,7 +39,8 @@ async function sendAgentReply(
   query: string,
   options?: RunAgentOptions
 ): Promise<void> {
-  bot.sendChatAction(chatId, 'typing');
+  await bot.sendChatAction(chatId, 'typing').catch(() => {});
+
   console.log(`QUERY ${chatId}: ${query}`, options ?? {});
 
   const loadingMsg = await bot.sendMessage(chatId, '👁️ Mengintai pergerakan\\.\\.\\.', {
@@ -72,28 +48,46 @@ async function sendAgentReply(
   });
 
   try {
-    const result = await runAgent(query, options);
-    await bot.deleteMessage(chatId, loadingMsg.message_id);
-    await bot.sendMessage(chatId, result, {
-      parse_mode: 'MarkdownV2',
-      disable_web_page_preview: true,
-    });
+    const result = await runAgent(query, { ...options, chatId });
+
+    await bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
+
+    try {
+      await bot.sendMessage(chatId, result, {
+        parse_mode: 'MarkdownV2',
+        disable_web_page_preview: true,
+      });
+    } catch (sendErr) {
+      console.error('MarkdownV2 send failed, retrying plain text:', sendErr);
+      await bot.sendMessage(chatId, result.replace(/\\/g, ''), {
+        disable_web_page_preview: true,
+      });
+    }
   } catch (err) {
     console.error('Handler error:', err);
-    await bot.editMessageText('❌ Gagal memproses permintaan\\. Coba lagi\\.', {
-      chat_id: chatId,
-      message_id: loadingMsg.message_id,
-      parse_mode: 'MarkdownV2',
-    });
+    try {
+      await bot.editMessageText('❌ Gagal memproses permintaan\\. Coba lagi\\.', {
+        chat_id: chatId,
+        message_id: loadingMsg.message_id,
+        parse_mode: 'MarkdownV2',
+      });
+    } catch (editErr) {
+      console.error('Failed to edit loading message:', editErr);
+      await bot
+        .sendMessage(chatId, '❌ Gagal memproses permintaan. Coba lagi.', {
+          disable_web_page_preview: true,
+        })
+        .catch(() => {});
+    }
   }
 }
 
 async function handleSlashCommand(bot: TelegramBot, chatId: number, text: string): Promise<void> {
-  const { coin, action } = parseSlashCommand(text);
+  const { coin, action, positionAge } = parseSlashCommandArgs(text);
   if (!coin) {
     await bot.sendMessage(
       chatId,
-      escapeMarkdown('Sebutkan coin-nya. Contoh: /signal BTC atau /positions ETH'),
+      escapeMarkdown('Sebutkan coin-nya. Contoh: /signal BTC, /trend PENGU 7d, /positions ETH intraday'),
       { parse_mode: 'MarkdownV2' }
     );
     return;
@@ -104,6 +98,8 @@ async function handleSlashCommand(bot: TelegramBot, chatId: number, text: string
     action,
     cohortFocus: 'all',
     depth: 'full',
+    positionAge,
+    chatId,
   });
 }
 
@@ -117,14 +113,15 @@ export function registerHandlers(bot: TelegramBot): void {
       '🐋 *Whale Signal Agent*\n\n' +
         'Monitor posisi whale di Hyperliquid secara real\\-time\\.\n\n' +
         '*Perintah:*\n' +
-        '/signal \\[coin\\] — snapshot bias whale\n' +
-        '/positions \\[coin\\] — detail entry, PnL, liq cluster\n' +
-        '/trend \\[coin\\] — trend bias 7 hari\n' +
+        '/signal \\[coin\\] \\[timeframe\\] — snapshot bias whale \\(default 24h\\)\n' +
+        '/positions \\[coin\\] \\[timeframe\\] — detail entry, PnL, liq cluster\n' +
+        '/trend \\[coin\\] \\[timeframe\\] — trend bias \\(24h, 7d, 30d, intraday, swing\\)\n' +
         '/top — top trader leaderboard\n' +
         '/help — panduan lengkap\n\n' +
         '*Atau tanya natural:*\n' +
         '_"Brief position BTC"_ → positions \\(ringkas\\)\n' +
         '_"Momentum trend ETH gimana?"_ → trend\n' +
+        '_"Trend PENGU untuk scalping"_ → trend 24 jam\n' +
         '_"Overview BTC: bias \\+ entry whale"_ → composite briefing',
       { parse_mode: 'MarkdownV2' }
     );
@@ -138,9 +135,10 @@ export function registerHandlers(bot: TelegramBot): void {
       chatId,
       '*Panduan Whale Signal Agent*\n\n' +
         '*Slash commands:*\n' +
-        '• `/signal {coin}` — bias agregat cohort\n' +
-        '• `/positions {coin}` — entry price, dominasi, top wallet\n' +
-        '• `/trend {coin}` — momentum akumulasi/distribusi\n\n' +
+        '• `/signal {coin} [timeframe]` — bias agregat cohort \\(default 24h\\)\n' +
+        '• `/positions {coin} [timeframe]` — entry price, dominasi, top wallet\n' +
+        '• `/trend {coin} [timeframe]` — momentum akumulasi/distribusi\n' +
+        '• Timeframe: `24h`, `7d`, `30d`, `intraday`, `swing` \\(min granularitas API: 24 jam\\)\n\n' +
         '*Natural language \\(agent router\\):*\n' +
         '• _"Berikan brief position BTC"_ → positions ringkas\n' +
         '• _"Whale masuk dari harga berapa?"_ → positions\n' +
@@ -152,19 +150,19 @@ export function registerHandlers(bot: TelegramBot): void {
     );
   });
 
-  bot.onText(/\/signal(?:@\w+)?(?:\s+\S+)?/i, async (msg) => {
+  bot.onText(/\/signal(?:@\w+)?(?:\s+\S+){0,2}/i, async (msg) => {
     const chatId = msg.chat.id;
     if (!(await ensureAllowed(bot, chatId))) return;
     await handleSlashCommand(bot, chatId, msg.text ?? '');
   });
 
-  bot.onText(/\/trend(?:@\w+)?(?:\s+\S+)?/i, async (msg) => {
+  bot.onText(/\/trend(?:@\w+)?(?:\s+\S+){0,2}/i, async (msg) => {
     const chatId = msg.chat.id;
     if (!(await ensureAllowed(bot, chatId))) return;
     await handleSlashCommand(bot, chatId, msg.text ?? '');
   });
 
-  bot.onText(/\/positions?(?:@\w+)?(?:\s+\S+)?/i, async (msg) => {
+  bot.onText(/\/positions?(?:@\w+)?(?:\s+\S+){0,2}/i, async (msg) => {
     const chatId = msg.chat.id;
     if (!(await ensureAllowed(bot, chatId))) return;
     await handleSlashCommand(bot, chatId, msg.text ?? '');
@@ -177,6 +175,7 @@ export function registerHandlers(bot: TelegramBot): void {
     await sendAgentReply(bot, chatId, 'top trader leaderboard', {
       coin: 'BTC',
       action: 'leaderboard',
+      chatId,
     });
   });
 
@@ -186,7 +185,11 @@ export function registerHandlers(bot: TelegramBot): void {
     if (!msg.text) return;
     if (!(await ensureAllowed(bot, chatId))) return;
 
-    await sendAgentReply(bot, chatId, msg.text);
+    try {
+      await sendAgentReply(bot, chatId, msg.text);
+    } catch (err) {
+      console.error('Unhandled message handler error:', err);
+    }
   });
 
   bot.on('polling_error', (err) => {

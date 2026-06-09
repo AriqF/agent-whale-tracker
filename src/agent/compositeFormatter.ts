@@ -1,4 +1,5 @@
 import { formatBias } from '../bot/formatter';
+import { positionAgeLabel } from './positionAge';
 import {
   directionLabel,
   formatKeyCohortSignalLine,
@@ -97,7 +98,7 @@ function synthesizeConclusion(input: CompositeBriefInput): string {
 export function formatCompositeBrief(input: CompositeBriefInput): string {
   const { signal, positions, aspects } = input;
   const sections: string[] = [
-    `BRIEFING — ${signal.coin}`,
+    `BRIEFING — ${signal.coin} (signal/trend: ${positionAgeLabel(signal.positionAge)})`,
     `🕐 ${formatTimestamp(signal.timestamp)}`,
   ];
 
@@ -135,7 +136,7 @@ export function formatCompositeBrief(input: CompositeBriefInput): string {
         'TREND',
         ...(keyTrends.length
           ? keyTrends.map(formatKeyCohortTrendLine)
-          : ['Data trend tidak cukup']),
+          : [`Data trend tidak cukup (${positionAgeLabel(signal.positionAge)})`]),
       ].join('\n')
     );
   }
