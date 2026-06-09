@@ -8,7 +8,9 @@ import type { AgentIntent } from '../types';
 export async function runSignalReport(intent: AgentIntent): Promise<string> {
   const parsed = agentIntentToParsedIntent(intent);
 
-  console.log(`[Signal] coin=${parsed.coin} mode=${parsed.mode} cohort=${parsed.cohortFocus}`);
+  console.log(
+    `[Signal] coin=${parsed.coin} mode=${parsed.mode} cohort=${parsed.cohortFocus} positionAge=${parsed.positionAge}`
+  );
 
   const [snapshots, biasExport] = await Promise.all([
     fetchWhalePositionMetrics(parsed.coin, parsed.positionAge),

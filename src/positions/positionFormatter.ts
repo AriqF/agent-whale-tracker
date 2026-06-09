@@ -1,6 +1,7 @@
 import { formatUsd } from '../bot/formatter';
+import { positionAgeLabel } from '../agent/positionAge';
 import { inlineCode } from '../utils/markdown';
-import type { CohortPositionStats, PositionRecord, PositionsReportResult } from '../types';
+import type { CohortPositionStats, PositionAge, PositionRecord, PositionsReportResult } from '../types';
 
 function formatPrice(price: number): string {
   if (price >= 1_000_000) return `$${(price / 1_000_000).toFixed(2)}M`;
@@ -96,7 +97,7 @@ function formatCohortSection(c: CohortPositionStats): string {
     `${c.positionCount} posisi terbuka | notional ${formatUsd(c.totalNotional)}`,
     formatSideDominance(c),
     entryVsMark,
-    `Profit: ${Math.round(c.pctInProfit)}% posisi | Fresh <24h: ${Math.round(c.pctFresh24h)}%`,
+    `Profit: ${Math.round(c.pctInProfit)}% posisi | Fresh 24 jam: ${Math.round(c.pctFresh24h)}%`,
     `PnL unrealized: ${c.totalUnrealizedPnl >= 0 ? '+' : ''}${formatUsd(c.totalUnrealizedPnl)}`,
   ];
 
@@ -233,14 +234,30 @@ function formatConclusionBrief(result: PositionsReportResult): string {
   return `KESIMPULAN: Leviathan dan Smart Money sama-sama ${leviathanSide} | ${Math.round(leviathan.pctInProfit)}% vs ${Math.round(smart.pctInProfit)}% in profit.`;
 }
 
-export function formatPositionsBrief(result: PositionsReportResult): string {
+function formatPositionsHeader(coin: string, positionAge?: PositionAge): string {
+  if (!positionAge) return `POSITIONS — ${coin}`;
+  return `POSITIONS — ${coin} (timeframe: ${positionAgeLabel(positionAge)})`;
+}
+
+function formatPositionsFootnote(positionAge?: PositionAge): string | null {
+  if (!positionAge || positionAge === 'all') return null;
+  return 'Posisi terbuka: lookback API 3 hari · stat Fresh 24 jam ditampilkan per cohort';
+}
+
+export function formatPositionsBrief(
+  result: PositionsReportResult,
+  options?: { positionAge?: PositionAge }
+): string {
   const sections = [
-    `POSITIONS — ${result.coin} (brief)`,
+    `${formatPositionsHeader(result.coin, options?.positionAge)} (brief)`,
     `🕐 ${formatTimestamp(result.timestamp)}`,
     ...result.cohorts.map(formatCohortBriefLine),
     formatConclusionBrief(result),
     '⚠️ Bukan financial advice. DYOR.',
   ];
+
+  const footnote = formatPositionsFootnote(options?.positionAge);
+  if (footnote) sections.splice(sections.length - 1, 0, footnote);
 
   return sections.join('\n\n');
 }
@@ -250,13 +267,19 @@ export function formatCohortPositionLine(c: CohortPositionStats): string {
   return formatCohortBriefLine(c);
 }
 
-export function formatPositionsReport(result: PositionsReportResult): string {
+export function formatPositionsReport(
+  result: PositionsReportResult,
+  options?: { positionAge?: PositionAge }
+): string {
   const sections = [
-    `POSITIONS — ${result.coin}`,
+    formatPositionsHeader(result.coin, options?.positionAge),
     `🕐 ${formatTimestamp(result.timestamp)}`,
     ...result.cohorts.map(formatCohortSection),
     formatConclusion(result),
   ];
+
+  const footnote = formatPositionsFootnote(options?.positionAge);
+  if (footnote) sections.push(footnote);
 
   return sections.join('\n\n');
 }

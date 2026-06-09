@@ -2,7 +2,7 @@
 // _ * [ ] ( ) ~ ` > # + - = | { } . !
 
 export function escapeMarkdown(text: string): string {
-  return text.replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
+  return text.replace(/([_*[\]()~`>#+\-=|{}.!\\%])/g, '\\$1');
 }
 
 /** Inline code — tap-friendly monospace block in Telegram (MarkdownV2) */
