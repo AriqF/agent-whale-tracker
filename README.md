@@ -56,6 +56,8 @@ Copy dari [`.env.example`](.env.example):
 | Variable | Wajib | Deskripsi |
 |----------|-------|-----------|
 | `TELEGRAM_BOT_TOKEN` | Ya | Token bot Telegram |
+| `TELEGRAM_BOT_URL` | Tidak | URL bot untuk CTA landing page, mis. `https://t.me/YourBot` |
+| `PORT` | Tidak | Port HTTP landing page (default `9006`) |
 | `HYPERTRACKER_API_KEY` | Ya | API key HyperTracker |
 | `9ROUTER_BASE_URL` | Ya | Base URL 9router (dengan atau tanpa `/v1`) |
 | `9ROUTER_API_KEY` | Ya | API key 9router |
@@ -139,6 +141,7 @@ scheduler.ts ──► runPulse (BTC monitor) ──► ALLOWED_CHAT_IDS only
 ```
 src/
 ├── bot/           # Telegram handlers, access control & entry point
+├── web/           # Landing page HTTP server (port 9006)
 ├── agent/         # Router, intent parser, report runners, monitor & scheduler
 ├── redis/         # Redis client + generic JSON KV
 ├── api/           # HyperTracker client
@@ -147,6 +150,8 @@ src/
 ├── signal/        # Signal logic (bias, divergence, trend)
 ├── cache/         # API response cache
 └── utils/         # Markdown, API logging
+public/
+└── landing.html   # Static landing page (Ocean Eyes)
 ```
 
 ### Swap LLM provider
@@ -166,9 +171,24 @@ import { chatCompletion } from '../llm/nineRouter';
 | `pnpm build` | Compile TypeScript → `dist/` |
 | `pnpm start` | Jalankan production build |
 
+## Landing page
+
+Proses yang sama dengan bot Telegram juga serve **landing page statis** di port HTTP:
+
+| Route | Fungsi |
+|-------|--------|
+| `GET /` | Halaman Ocean Eyes (info + CTA Telegram + link GitHub) |
+| `GET /health` | Healthcheck JSON `{ "status": "ok" }` |
+
+- Port: env `PORT` (default **9006**)
+- CTA Telegram: `TELEGRAM_BOT_URL` (jika kosong, tombol Telegram disabled)
+- GitHub: hardcoded di [`src/web/constants.ts`](src/web/constants.ts)
+
+Polling Telegram tetap berjalan di proses yang sama — landing page tidak mengganggu bot.
+
 ## Deployment
 
-Bot memakai **Telegram polling** — tidak perlu expose port HTTP.
+Bot memakai **Telegram polling** (outbound ke Telegram). Landing page listen **inbound** di `PORT` (default 9006) — arahkan domain ke port tersebut.
 
 Panduan deploy ke VM tanpa Docker (nvm + PM2 + GitHub Actions):
 

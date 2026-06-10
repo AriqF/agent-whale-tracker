@@ -26,6 +26,7 @@ COPY package.json pnpm-lock.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --prod --frozen-lockfile
 
 COPY --from=build /app/dist ./dist
+COPY public ./public
 
 USER node
 EXPOSE 9006

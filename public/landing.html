@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Ocean Eyes — whale signal agent untuk memantau posisi whale di Hyperliquid via HyperTracker." />
+  <title>Ocean Eyes — Whale Signal Agent</title>
+  <style>
+    :root {
+      --bg-deep: #0a1628;
+      --bg-card: #111f35;
+      --accent: #22d3ee;
+      --accent-dim: #0891b2;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --border: #1e3a5f;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-deep);
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 211, 238, 0.12), transparent),
+        radial-gradient(ellipse 60% 40% at 100% 100%, rgba(8, 145, 178, 0.08), transparent);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem 4rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .logo {
+      font-size: 2.75rem;
+      margin-bottom: 0.5rem;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
+    }
+
+    .tagline {
+      font-size: 1.125rem;
+      color: var(--text-muted);
+      max-width: 32rem;
+      margin: 0 auto;
+    }
+
+    section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    h2 {
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      margin-bottom: 1rem;
+    }
+
+    ul {
+      list-style: none;
+    }
+
+    li {
+      padding: 0.5rem 0 0.5rem 1.5rem;
+      position: relative;
+      color: var(--text-muted);
+    }
+
+    li::before {
+      content: "◆";
+      position: absolute;
+      left: 0;
+      color: var(--accent-dim);
+      font-size: 0.65rem;
+      top: 0.85rem;
+    }
+
+    li strong { color: var(--text); }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      margin: 2rem 0;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.875rem 1.5rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: transform 0.15s, opacity 0.15s;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+      color: var(--bg-deep);
+    }
+
+    .btn-primary.disabled {
+      opacity: 0.45;
+      pointer-events: none;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--accent-dim);
+      background: rgba(34, 211, 238, 0.06);
+    }
+
+    footer {
+      text-align: center;
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      margin-top: 2rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+    }
+
+    footer p + p { margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo" aria-hidden="true">👁️</div>
+      <h1>Ocean Eyes</h1>
+      <p class="tagline">
+        Whale signal agent untuk Hyperliquid — mengintai pergerakan posisi whale &amp; smart money secara real-time.
+      </p>
+    </header>
+
+    <section>
+      <h2>Apa itu Ocean Eyes?</h2>
+      <ul>
+        <li><strong>Signal snapshot</strong> — bias agregat whale &amp; smart money per cohort</li>
+        <li><strong>Trend</strong> — momentum akumulasi / distribusi (timeframe 24h, 7d, 30d)</li>
+        <li><strong>Positions</strong> — entry price, dominasi LONG/SHORT, top wallet, PnL</li>
+        <li><strong>Natural language</strong> — tanya dalam Bahasa Indonesia atau English; bot merutekan intent, laporan deterministik tanpa LLM narasi</li>
+      </ul>
+    </section>
+
+    <div class="actions">
+      <a class="btn btn-primary __TELEGRAM_CTA_CLASS__" href="__TELEGRAM_BOT_URL__" rel="noopener noreferrer" target="_blank">
+        Buka di Telegram
+      </a>
+      <a class="btn btn-secondary" href="__GITHUB_REPO_URL__" rel="noopener noreferrer" target="_blank">
+        GitHub
+      </a>
+    </div>
+
+    <footer>
+      <p>Data dari HyperTracker API · Tier 0 reports — bukan financial advice.</p>
+      <p>Always DYOR.</p>
+    </footer>
+  </div>
+</body>
+</html>

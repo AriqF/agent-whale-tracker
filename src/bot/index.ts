@@ -2,7 +2,10 @@ import 'dotenv/config';
 import TelegramBot from 'node-telegram-bot-api';
 import { startMonitorScheduler } from '../agent/scheduler';
 import { pingRedis } from '../redis/client';
+import { startWebServer } from '../web/server';
 import { registerHandlers } from './handlers';
+
+startWebServer();
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
